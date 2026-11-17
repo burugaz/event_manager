@@ -1,0 +1,26 @@
+[
+    {
+        "id": 1,
+        "event_id": 1,
+        "employee": "Иван Петров",
+        "is_cancelled": false
+    },
+    {
+        "id": 2,
+        "event_id": 1,
+        "employee": "Анна Смирнова",
+        "is_cancelled": false
+    },
+    {
+        "id": 3,
+        "event_id": 3,
+        "employee": "Иван Петров",
+        "is_cancelled": false
+    },
+    {
+        "id": 4,
+        "event_id": 4,
+        "employee": "Деменкин Артур Евграфович",
+        "is_cancelled": false
+    }
+]

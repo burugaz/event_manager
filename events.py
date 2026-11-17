@@ -1,85 +1,57 @@
-"""Функции работы с мероприятиями.
-
-Мероприятия хранятся в словаре: ключ - идентификатор мероприятия,
-значение - словарь с данными (title, date, capacity).
-Дата хранится строкой в формате ГГГГ-ММ-ДД.
-"""
+"""Функции работы с мероприятиями (объектная модель)."""
 from datetime import date
+from typing import List, Optional
+from models.event import Event
 
 
-def calculate_fill_percent(capacity: int, registered_count: int) -> int:
-    """Вернуть процент заполненности мероприятия (целое число)."""
-    return int(registered_count / capacity * 100)
-
-
-def is_event_upcoming(event_date: date, today: date) -> bool:
-    """Проверить, что мероприятие ещё не прошло."""
-    return event_date >= today
+def find_event_by_id(events: List[Event], event_id: int) -> Optional[Event]:
+    """Найти мероприятие по ID."""
+    for event in events:
+        if event.id == event_id:
+            return event
+    return None
 
 
 def add_event(
-    events: dict[int, dict],
+    events: List[Event],
     title: str,
     event_date: date,
     capacity: int,
-) -> None:
-    """Добавить мероприятие в словарь events.
-
-    Идентификатор формируется автоматически.
-    При некорректных данных вызывает ValueError.
-    """
+) -> Event:
+    """Добавить новое мероприятие в список."""
     if not title.strip():
         raise ValueError("Название мероприятия не может быть пустым")
     if capacity <= 0:
         raise ValueError("Вместимость должна быть положительным числом")
-    new_id = max(events, default=0) + 1
-    events[new_id] = {
-        "title": title.strip(),
-        "date": event_date.isoformat(),
-        "capacity": capacity,
-    }
 
+    new_id = max((e.id for e in events), default=0) + 1
 
-def find_event(events: dict[int, dict], query: str) -> list[dict]:
-    """Найти мероприятия по подстроке названия (без учёта регистра)."""
-    query = query.strip().casefold()
-    found = []
-    for event_id, event in events.items():
-        if query in event["title"].casefold():
-            found.append({"id": event_id, **event})
-    return found
-
-
-def check_event_capacity(
-    events: dict[int, dict],
-    event_id: int,
-    min_capacity: int,
-) -> bool:
-    """Проверить, что вместимость мероприятия не меньше min_capacity.
-
-    Если мероприятия с таким идентификатором нет, вернуть False.
-    """
-    event = events.get(event_id)
-    if event is None:
-        return False
-    return event["capacity"] >= min_capacity
-
-
-def filter_events_by_capacity(
-    events: dict[int, dict],
-    min_capacity: int,
-) -> list[dict]:
-    """Отобрать мероприятия, вмещающие не меньше min_capacity человек."""
-    return list(
-        {"id": event_id, **event}
-        for event_id, event in events.items()
-        if event["capacity"] >= min_capacity
+    new_event = Event(
+        event_id=new_id,
+        title=title.strip(),
+        event_date=event_date,
+        capacity=capacity
     )
+    events.append(new_event)
+    return new_event
 
 
-def sort_events(events: dict[int, dict]) -> list[dict]:
-    """Вернуть мероприятия, упорядоченные по дате проведения."""
-    all_events = [
-        {"id": event_id, **event} for event_id, event in events.items()
+def find_events_by_title(events: List[Event], query: str) -> List[Event]:
+    """Найти мероприятия по подстроке названия."""
+    query_lower = query.strip().casefold()
+    return [
+        event for event in events
+        if query_lower in event.title.casefold()
     ]
-    return sorted(all_events, key=lambda event: event["date"])
+
+
+def sort_events_by_date(events: List[Event]) -> List[Event]:
+    """Вернуть отсортированный список мероприятий по дате."""
+    return sorted(events, key=lambda e: e.date)
+
+
+def calculate_fill_percent(event: Event, registered_count: int) -> int:
+    """Вернуть процент заполненности мероприятия."""
+    if event.capacity == 0:
+        return 0
+    return int(registered_count / event.capacity * 100)

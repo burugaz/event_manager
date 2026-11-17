@@ -1,21 +1,19 @@
-"""Точка запуска приложения «Система организации корпоративных
-мероприятий»."""
+"""Точка запуска приложения «Система организации корпоративных мероприятий» (ООП)."""
 import os
 from datetime import date
-
+from models.event import Event
+from models.registration import Registration
 from events import (
     add_event,
     calculate_fill_percent,
-    check_event_capacity,
-    filter_events_by_capacity,
-    find_event,
-    sort_events,
+    find_event_by_id,
+    sort_events_by_date,
 )
 from registrations import (
     cancel_registration,
-    count_registrations,
+    count_registrations_for_event,
     create_registration,
-    get_event_status,
+    get_event_status_text,
 )
 from storage import (
     load_events,
@@ -33,97 +31,79 @@ MENU = """
 === Система организации корпоративных мероприятий ===
 1. Показать мероприятия
 2. Найти мероприятие по названию
-3. Проверить вместимость
-4. Подобрать мероприятия по вместимости
-5. Проверить возможность регистрации
-6. Зарегистрировать сотрудника
-7. Отменить регистрацию
-8. Показать регистрации
-9. Добавить мероприятие
+3. Проверить статус регистрации
+4. Зарегистрировать сотрудника
+5. Отменить регистрацию
+6. Показать регистрации
+7. Добавить мероприятие
 0. Выход"""
 
 
-def show_events(events: dict[int, dict], registrations: list[dict]) -> None:
-    """Вывести список мероприятий, отсортированный по дате."""
+def show_events(events: list[Event], registrations: list[Registration]) -> None:
+    """Вывести список мероприятий."""
     if not events:
         print("Мероприятий нет")
         return
-    for event in sort_events(events):
-        registered = count_registrations(registrations, event["id"])
-        percent = calculate_fill_percent(event["capacity"], registered)
+
+    sorted_events = sort_events_by_date(events)
+    for event in sorted_events:
+        registered = count_registrations_for_event(registrations, event.id)
+        percent = calculate_fill_percent(event, registered)
         print(
-            f'{event["id"]}. {event["title"]} | {event["date"]} | '
-            f'мест занято: {registered}/{event["capacity"]} ({percent}%)'
+            f'{event.id}. {event.title} | {event.date.strftime("%d.%m.%Y")} | '
+            f'мест занято: {registered}/{event.capacity} ({percent}%)'
         )
 
 
-def show_registrations(
-    events: dict[int, dict],
-    registrations: list[dict],
-) -> None:
-    """Вывести список регистраций с указанием мероприятия."""
-    if not registrations:
-        print("Регистраций нет")
+def show_registrations(registrations: list[Registration]) -> None:
+    """Вывести список активных регистраций."""
+    active_regs = [r for r in registrations if not r.is_cancelled]
+    if not active_regs:
+        print("Активных регистраций нет")
         return
-    for item in registrations:
-        event = events.get(item["event_id"])
-        title = event["title"] if event else "неизвестное мероприятие"
-        print(f'{item["id"]}. {item["employee"]} -> {title}')
+
+    for reg in active_regs:
+        print(f'{reg.id}. {reg.employee_name} -> {reg.event.title} ({reg.event.date.strftime("%d.%m.%Y")})')
 
 
-def ask_event_id(events: dict[int, dict]) -> int | None:
-    """Запросить id мероприятия; вернуть None, если его нет."""
+def ask_event_id(events: list[Event]) -> int | None:
+    """Запросить ID мероприятия."""
     event_id = input_int("ID мероприятия: ")
-    if event_id not in events:
+    if find_event_by_id(events, event_id) is None:
         print("Мероприятие не найдено")
         return None
     return event_id
 
 
-def search_events(events: dict[int, dict]) -> None:
+def search_events(events: list[Event]) -> None:
     """Найти и вывести мероприятия по названию."""
-    found = find_event(events, input("Название мероприятия: "))
+    found = []
+    query = input("Название мероприятия: ")
+    if query.strip():
+        query_lower = query.strip().casefold()
+        found = [e for e in events if query_lower in e.title.casefold()]
+
     if not found:
         print("Ничего не найдено")
     for event in found:
-        print(f'{event["id"]}. {event["title"]} | {event["date"]}')
+        print(f'{event.id}. {event.title} | {event.date.strftime("%d.%m.%Y")}')
 
 
-def check_capacity(events: dict[int, dict]) -> None:
-    """Проверить, вмещает ли мероприятие заданное число людей."""
-    event_id = ask_event_id(events)
-    if event_id is None:
-        return
-    people = input_int("Количество участников: ")
-    if check_event_capacity(events, event_id, people):
-        print("Вместимости достаточно")
-    else:
-        print("Вместимости недостаточно")
-
-
-def select_by_capacity(events: dict[int, dict]) -> None:
-    """Вывести мероприятия, вмещающие не меньше заданного числа людей."""
-    min_capacity = input_int("Минимальная вместимость: ")
-    found = filter_events_by_capacity(events, min_capacity)
-    if not found:
-        print("Подходящих мероприятий нет")
-    for event in found:
-        print(f'{event["id"]}. {event["title"]} ({event["capacity"]} мест)')
-
-
-def check_registration(
-    events: dict[int, dict],
-    registrations: list[dict],
+def check_registration_status(
+    events: list[Event],
+    registrations: list[Registration],
 ) -> None:
     """Вывести статус регистрации на выбранное мероприятие."""
     event_id = ask_event_id(events)
     if event_id is not None:
-        print(get_event_status(events, registrations, event_id, date.today()))
+        event = find_event_by_id(events, event_id)
+        if event:
+            print(get_event_status_text(event, registrations, date.today()))
 
 
 def register_employee(
-    events: dict[int, dict],
-    registrations: list[dict],
+    events: list[Event],
+    registrations: list[Registration],
 ) -> None:
     """Зарегистрировать сотрудника и сохранить регистрации."""
     event_id = ask_event_id(events)
@@ -131,65 +111,62 @@ def register_employee(
         return
     employee = input("ФИО сотрудника: ")
     try:
-        registration = create_registration(
-            events, registrations, event_id, employee, date.today()
-        )
+        reg = create_registration(events, registrations, event_id, employee, date.today())
+        save_registrations(REGISTRATIONS_FILE, registrations)
+        print(f'Регистрация создана, ID: {reg.id}')
     except ValueError as error:
-        print(f"Регистрация невозможна: {error}")
-        return
-    save_registrations(REGISTRATIONS_FILE, registrations)
-    print(f'Регистрация создана, ID: {registration["id"]}')
+        print(f"Ошибка: {error}")
 
 
-def cancel_employee_registration(registrations: list[dict]) -> None:
-    """Отменить регистрацию и сохранить регистрации."""
+def cancel_employee_registration(registrations: list[Registration]) -> None:
+    """Отменить регистрацию и сохранить изменения."""
     registration_id = input_int("ID регистрации: ")
     if cancel_registration(registrations, registration_id):
         save_registrations(REGISTRATIONS_FILE, registrations)
         print("Регистрация отменена")
     else:
-        print("Регистрация не найдена")
+        print("Регистрация не найдена или уже отменена")
 
 
-def create_event(events: dict[int, dict]) -> None:
+def create_event(events: list[Event]) -> None:
     """Добавить мероприятие и сохранить мероприятия."""
     title = input("Название мероприятия: ")
     event_date = input_date("Дата (ДД.ММ.ГГГГ): ")
     capacity = input_int("Вместимость: ")
     try:
         add_event(events, title, event_date, capacity)
+        save_events(EVENTS_FILE, events)
+        print("Мероприятие добавлено")
     except ValueError as error:
-        print(f"Мероприятие не добавлено: {error}")
-        return
-    save_events(EVENTS_FILE, events)
-    print("Мероприятие добавлено")
+        print(f"Ошибка: {error}")
 
 
 def main() -> None:
     """Точка запуска: цикл меню и вызов функций проекта."""
-    events = load_events(EVENTS_FILE)
-    registrations = load_registrations(REGISTRATIONS_FILE)
+    # Загрузка данных как списков/словарей объектов
+    events_dict = load_events(EVENTS_FILE)
+    events_list = list(events_dict.values())
+
+    registrations = load_registrations(REGISTRATIONS_FILE, events_dict)
+
     while True:
         print(MENU)
         choice = input("Выберите действие: ").strip()
+
         if choice == "1":
-            show_events(events, registrations)
+            show_events(events_list, registrations)
         elif choice == "2":
-            search_events(events)
+            search_events(events_list)
         elif choice == "3":
-            check_capacity(events)
+            check_registration_status(events_list, registrations)
         elif choice == "4":
-            select_by_capacity(events)
+            register_employee(events_list, registrations)
         elif choice == "5":
-            check_registration(events, registrations)
-        elif choice == "6":
-            register_employee(events, registrations)
-        elif choice == "7":
             cancel_employee_registration(registrations)
-        elif choice == "8":
-            show_registrations(events, registrations)
-        elif choice == "9":
-            create_event(events)
+        elif choice == "6":
+            show_registrations(registrations)
+        elif choice == "7":
+            create_event(events_list)
         elif choice == "0":
             print("До свидания!")
             break
